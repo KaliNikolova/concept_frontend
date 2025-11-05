@@ -1,0 +1,190 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Shared gray/blocked time colors - update these to change both blocked times and gray buttons */
+:root {
+  --gray-btn-bg: #e8e8e8;
+  --gray-btn-color: #757575;
+  --gray-btn-border: #9e9e9e;
+  --gray-btn-hover-bg: #d8d8d8;
+  --gray-btn-hover-color: #656565;
+  --gray-btn-hover-border: #8e8e8e;
+  --gray-btn-active-bg: #d0d0d0;
+  --gray-btn-opacity: 0.7;
+}
+
+  /* Shared purple button style - update this one place to change all purple buttons */
+  .purple-btn {
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #7285ed 0%, #8070a9 100%);
+    color: white !important;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 3px 8px rgba(102, 126, 234, 0.25);
+    letter-spacing: 0.5px;
+  }
+
+  .purple-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    color: white !important;
+  }
+
+  .purple-btn:active:not(:disabled) {
+    transform: translateY(0);
+    color: white !important;
+  }
+
+  .purple-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    color: white !important;
+  }
+
+/* Shared light purple button style - update this one place to change all light purple buttons */
+.light-purple-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%) !important;
+  color: #667eea !important;
+  border: 1px solid rgba(102, 126, 234, 0.2) !important;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.light-purple-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.25) 0%, rgba(118, 75, 162, 0.25) 100%) !important;
+  border-color: rgba(102, 126, 234, 0.3) !important;
+  border-width: 1px !important;
+  color: #5568d3 !important;
+}
+
+.light-purple-btn:active:not(:disabled) {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.2) 100%) !important;
+}
+
+.light-purple-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.light-purple-btn svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+/* Shared clear/delete button style (red) - update this one place to change all clear buttons */
+.clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.15) 0%, rgba(211, 47, 47, 0.15) 100%);
+  color: #d32f2f;
+  border: 1px solid rgba(244, 67, 54, 0.2);
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.clear-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.25) 0%, rgba(211, 47, 47, 0.25) 100%);
+  border-color: rgba(244, 67, 54, 0.3);
+  border-width: 1px;
+  color: #c62828;
+}
+
+.clear-btn:active:not(:disabled) {
+  background: linear-gradient(135deg, rgba(244, 67, 54, 0.2) 0%, rgba(211, 47, 47, 0.2) 100%);
+}
+
+.clear-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Shared gray button style - matches blocked times color - update this one place to change all gray buttons */
+.gray-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--gray-btn-bg);
+  color: var(--gray-btn-color);
+  border: 1px solid var(--gray-btn-border);
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  opacity: var(--gray-btn-opacity);
+}
+
+.gray-btn:hover:not(:disabled) {
+  background: var(--gray-btn-hover-bg);
+  border-color: var(--gray-btn-hover-border);
+  border-width: 1px;
+  color: var(--gray-btn-hover-color);
+  opacity: 0.8;
+}
+
+.gray-btn:active:not(:disabled) {
+  background: var(--gray-btn-active-bg);
+}
+
+.gray-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.gray-btn svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+/* Global shadow for date picker menus - ensures shadow is visible */
+.v-menu__content {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  border-radius: 8px !important;
+}
+
+/* Ensure date picker itself has shadow */
+.v-date-picker {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  border-radius: 8px !important;
+}
