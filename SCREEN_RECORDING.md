@@ -1,4 +1,6 @@
 # Screen Recording - User Journey Demonstration
 
-[Screen Recording - User Journey Demonstration](./public/Untitled%20video%20-%20Made%20with%20Clipchamp.mp4)
-
+<video controls width="100%">
+  <source src="./public/Untitled video - Made with Clipchamp.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
