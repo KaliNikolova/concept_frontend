@@ -2121,7 +2121,14 @@ const handleMarkFocusComplete = async () => {
     
     // Check if there's a next task
     await fetchCurrentFocusTask()
-    hasNextTask.value = !!focusTask.value
+    
+    // Only show "Next Task" button if there's a task AND it's not already completed
+    hasNextTask.value = !!(focusTask.value && focusTask.value.status !== 'DONE')
+    
+    if (!hasNextTask.value && focusTask.value) {
+      console.log('No more TODO tasks - focus task is already completed')
+      focusTask.value = null // Clear it so we show "all done" state
+    }
     
     // Refresh scheduled tasks (completed task should be removed from schedule)
     await loadScheduledTasks()
@@ -2137,6 +2144,13 @@ const loadNextTask = async () => {
   taskCompleted.value = false
   focusError.value = ''
   await fetchCurrentFocusTask()
+  
+  // Check if the "next" task is actually a TODO task
+  if (focusTask.value && focusTask.value.status === 'DONE') {
+    console.log('Next task is already completed - no more TODO tasks')
+    focusTask.value = null
+    hasNextTask.value = false
+  }
 }
 
 const handleReplan = async () => {
