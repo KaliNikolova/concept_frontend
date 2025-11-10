@@ -15,13 +15,6 @@
       >
         Day Plan
       </button>
-      <button 
-        @click="handleNavigateToFocus" 
-        class="nav-item"
-        :class="{ active: appStore.appState === 'focus' }"
-      >
-        Focus
-      </button>
     </nav>
     <div 
       class="user-menu-wrapper"
@@ -30,21 +23,21 @@
     >
       <button 
         class="user-menu-btn"
-        :title="displayName || appStore.userSession?.email || 'User'"
+        :title="userProfile.displayName || userProfile.email || 'User'"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
           <circle cx="12" cy="7" r="4"></circle>
         </svg>
-        <span class="user-name">{{ displayName || appStore.userSession?.email || 'User' }}</span>
+        <span class="user-name">{{ userProfile.displayName || userProfile.email || 'User' }}</span>
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="dropdown-arrow">
           <polyline points="6 9 12 15 18 9"></polyline>
         </svg>
       </button>
       <div v-if="showUserMenu" class="user-menu-dropdown">
         <div class="user-menu-info">
-          <div class="user-menu-name">{{ displayName || 'User' }}</div>
-          <div class="user-menu-email">{{ appStore.userSession?.email || '' }}</div>
+          <div class="user-menu-name">{{ userProfile.displayName || 'User' }}</div>
+          <div class="user-menu-email">{{ userProfile.email || '' }}</div>
         </div>
         <div class="user-menu-divider"></div>
         <button @click="handleLogout" class="user-menu-item logout-item">
@@ -61,7 +54,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import * as userAccount from '@/api/userAccount.js'
 import * as plannerApi from '@/api/planner.js'
 import { useAppStore } from '@/stores/app.js'
@@ -70,9 +63,27 @@ import { useTasksStore } from '@/stores/tasks.js'
 const appStore = useAppStore()
 const tasksStore = useTasksStore()
 
-const displayName = ref('')
 const showUserMenu = ref(false)
+const userProfile = ref({ displayName: 'User', email: '' })
 let hideTimeout = null
+
+// Fetch user profile from backend on mount
+onMounted(async () => {
+  if (appStore.sessionToken) {
+    try {
+      const response = await userAccount.getUserProfile(appStore.sessionToken)
+      // Backend returns: { "profile": { "displayName": ..., "email": ... } }
+      if (response && response.profile) {
+        userProfile.value = response.profile
+      } else if (response && response.length > 0) {
+        // Fallback for old array format
+        userProfile.value = response[0]
+      }
+    } catch (err) {
+      console.error('Failed to fetch user profile:', err)
+    }
+  }
+})
 
 const handleNavigateToTasks = () => {
   appStore.setAppState('tasks')
@@ -80,93 +91,6 @@ const handleNavigateToTasks = () => {
 
 const handleNavigateToPlan = () => {
   appStore.setAppState('plan')
-}
-
-const handleNavigateToFocus = async () => {
-  if (!appStore.userId) {
-    return
-  }
-
-  // Get current todo tasks - use existing if available, refresh if needed
-  let todoTasks = tasksStore.todoTasks
-  
-  // Only refresh if we don't have tasks or if tasks are stale
-  if (todoTasks.length === 0 || !tasksStore.tasks.length) {
-    try {
-      await tasksStore.fetchTasks(appStore.userId)
-      todoTasks = tasksStore.todoTasks
-    } catch (err) {
-      console.error('Error fetching tasks:', err)
-      // Continue with existing tasks
-    }
-  }
-
-  // Check if we have tasks
-  if (todoTasks.length === 0) {
-    // No tasks - refresh to make sure, then show error
-    try {
-      await tasksStore.fetchTasks(appStore.userId)
-      todoTasks = tasksStore.todoTasks
-    } catch (err) {
-      console.error('Error fetching tasks:', err)
-    }
-    
-    if (todoTasks.length === 0) {
-      // Still no tasks - navigate to tasks page with error (but don't show loading state)
-      tasksStore.error = 'No tasks available to focus on'
-      appStore.setAppState('tasks')
-      return
-    }
-  }
-
-  // Plan the day to get the current first task
-  try {
-    const formattedTasks = todoTasks.map(task => ({
-      id: task._id,
-      duration: task.estimatedDuration || 60
-    }))
-
-    const busySlots = []
-
-    const response = await plannerApi.planDay(
-      appStore.userId,
-      formattedTasks,
-      busySlots
-    )
-
-    // Determine which task to focus on
-    let focusTask = null
-    if (response?.firstTask) {
-      focusTask = tasksStore.tasks.find(task => task._id === response.firstTask)
-    }
-    
-    // Fallback to first todo task if planning didn't return a task
-    if (!focusTask && todoTasks.length > 0) {
-      focusTask = todoTasks[0]
-    }
-
-    if (focusTask) {
-      // Set focus task and navigate in one go - no intermediate state
-      // Use nextTick to ensure state updates happen atomically
-      appStore.setCurrentFocusTask(focusTask)
-      appStore.setAppState('focus')
-    } else {
-      // This shouldn't happen, but handle it gracefully
-      tasksStore.error = 'No tasks available to focus on'
-      appStore.setAppState('tasks')
-    }
-  } catch (err) {
-    console.error('Error planning day:', err)
-    // Fallback: use the first todo task if available
-    if (todoTasks.length > 0) {
-      appStore.setCurrentFocusTask(todoTasks[0])
-      appStore.setAppState('focus')
-    } else {
-      // Last resort - navigate to tasks with error
-      appStore.setAppState('tasks')
-      tasksStore.error = err.message || 'Failed to plan day'
-    }
-  }
 }
 
 const handleMouseEnter = () => {
@@ -184,43 +108,25 @@ const handleMouseLeave = () => {
   }, 100)
 }
 
-const handleLogout = () => {
+const handleLogout = async () => {
   if (hideTimeout) {
     clearTimeout(hideTimeout)
     hideTimeout = null
   }
   showUserMenu.value = false
+  
+  // Call logout API to invalidate session
+  if (appStore.sessionToken) {
+    try {
+      await userAccount.logout(appStore.sessionToken)
+    } catch (err) {
+      console.error('Failed to logout on backend:', err)
+      // Continue with local logout even if backend fails
+    }
+  }
+  
   appStore.logout()
 }
-
-// Load user display name
-const loadUserDisplayName = async () => {
-  if (!appStore.userId) return
-  
-  try {
-    const profile = await userAccount.getUserProfile(appStore.userId)
-    if (profile && profile.length > 0 && profile[0].displayName) {
-      displayName.value = profile[0].displayName
-    }
-  } catch (err) {
-    console.error('Failed to load user profile:', err)
-  }
-}
-
-// Watch for user changes
-watch(() => appStore.userId, (newUserId) => {
-  if (newUserId) {
-    loadUserDisplayName()
-  } else {
-    displayName.value = ''
-  }
-})
-
-onMounted(() => {
-  if (appStore.userId) {
-    loadUserDisplayName()
-  }
-})
 
 onUnmounted(() => {
   if (hideTimeout) {

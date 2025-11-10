@@ -28,12 +28,11 @@ export const useScheduleStore = defineStore('schedule', {
   actions: {
     /**
      * Fetch all busy slots from Schedule concept
-     * This directly queries the Schedule concept (no sync - syncs don't exist in backend yet)
-     * @param {string} userId - User ID
+     * @param {string} session - Session token
      */
-    async fetchSlots(userId) {
-      if (!userId) {
-        this.error = 'No user ID available'
+    async fetchSlots(session) {
+      if (!session) {
+        this.error = 'No session token available'
         this.loading = false
         this.fetching = false
         return
@@ -50,19 +49,24 @@ export const useScheduleStore = defineStore('schedule', {
 
       try {
         // Directly query Schedule concept for busy slots (following Schedule/_getSlots pattern)
-        const slots = await scheduleApi.getSlots(userId)
+        console.log('Fetching busy slots from backend...')
+        const response = await scheduleApi.getSlots(session)
+        console.log('Raw response from getSlots:', response)
 
-        // Handle different possible response formats
+        // Backend returns: { "slots": [...] } - direct array of slot objects
         let slotsArray = []
-        if (Array.isArray(slots)) {
-          slotsArray = slots
-        } else if (slots && Array.isArray(slots.slots)) {
-          slotsArray = slots.slots
-        } else if (slots && Array.isArray(slots.data)) {
-          slotsArray = slots.data
+        if (response?.slots && Array.isArray(response.slots)) {
+          // New format: { slots: [...] } - direct array
+          console.log('Using format: response.slots (direct array)')
+          slotsArray = response.slots
+        } else if (Array.isArray(response)) {
+          // Fallback for old format
+          console.log('Using fallback: direct array')
+          slotsArray = response
         }
 
         this.busySlots = slotsArray
+        console.log('✓ Loaded', this.busySlots.length, 'busy slots')
       } catch (err) {
         const errorMsg = err.message || 'Failed to load busy slots'
         this.error = errorMsg

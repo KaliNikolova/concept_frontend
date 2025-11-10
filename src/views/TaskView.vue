@@ -823,7 +823,7 @@ const scrollToCurrentYear = () => {
 }
 
 // Watch for user changes
-watch(() => appStore.userId, (newUserId) => {
+watch(() => appStore.sessionToken, (newUserId) => {
   if (newUserId && appStore.appState === 'tasks') {
     // Only fetch if we don't have tasks or if we're on the tasks page
     if (!tasksStore.tasks.length || (!tasksStore.loading && !tasksStore.fetching)) {
@@ -834,20 +834,20 @@ watch(() => appStore.userId, (newUserId) => {
 
 // Watch for app state changes to fetch when navigating to tasks page
 watch(() => appStore.appState, (newState) => {
-  if (newState === 'tasks' && appStore.userId) {
+  if (newState === 'tasks' && appStore.sessionToken) {
     // Only fetch if we don't have tasks or tasks are stale
     if (!tasksStore.tasks.length || (!tasksStore.loading && !tasksStore.fetching)) {
-      tasksStore.fetchTasks(appStore.userId)
+      tasksStore.fetchTasks(appStore.sessionToken)
     }
   }
 })
 
 // Fetch tasks when component mounts or user changes
 onMounted(() => {
-  if (appStore.userId && appStore.appState === 'tasks') {
+  if (appStore.sessionToken && appStore.appState === 'tasks') {
     // Only fetch if we don't have tasks
     if (!tasksStore.tasks.length) {
-      tasksStore.fetchTasks(appStore.userId)
+      tasksStore.fetchTasks(appStore.sessionToken)
     }
   }
 })
@@ -926,7 +926,7 @@ const closeTaskModal = () => {
 
 // Unified submit handler for both add and edit
 const handleTaskSubmit = async () => {
-  if (!appStore.userId) {
+  if (!appStore.sessionToken) {
     return
   }
 
@@ -980,7 +980,7 @@ const handleTaskSubmit = async () => {
     if (taskModalMode.value === 'add') {
       // Adding new task
       await tasksStore.createTask(
-        appStore.userId,
+        appStore.sessionToken,
         taskForm.value.title.trim(),
         taskForm.value.description.trim(),
         dueDateTime.toISOString(),
@@ -995,19 +995,19 @@ const handleTaskSubmit = async () => {
       
       // Update task details (title, description, dueDate, estimatedDuration)
       await tasksStore.updateTask(
+        appStore.sessionToken,
         task._id,
         taskForm.value.title.trim(),
         taskForm.value.description.trim(),
         dueDateTime.toISOString(),
-        taskForm.value.estimatedDuration,
-        appStore.userId
+        taskForm.value.estimatedDuration
       )
 
       // Handle status change separately
       if (currentStatus !== newStatus) {
         if (newStatus === 'DONE') {
           // Use markTaskComplete for DONE status
-          await tasksStore.markTaskComplete(task._id, appStore.userId)
+          await tasksStore.markTaskComplete(appStore.sessionToken, task._id)
         }
         // If changing back to TODO, the backend doesn't support this via updateTask
         // So we'll just refresh tasks to get the current status from backend
@@ -1114,7 +1114,7 @@ const toggleArchived = () => {
 }
 
 const handleDeleteTask = async () => {
-  if (!currentTask.value || !appStore.userId) {
+  if (!currentTask.value || !appStore.sessionToken) {
     return
   }
 
@@ -1126,7 +1126,7 @@ const handleDeleteTask = async () => {
   taskError.value = ''
 
   try {
-    await tasksStore.deleteTask(currentTask.value._id, appStore.userId)
+    await tasksStore.deleteTask(appStore.sessionToken, currentTask.value._id)
     closeTaskModal()
   } catch (err) {
     taskError.value = err.message || 'Failed to delete task'
@@ -1237,7 +1237,7 @@ const handleDrop = async (index, event) => {
     restoreScroll()
     
     // Use a synchronous update to minimize re-render window
-    await tasksStore.reorderTasks(appStore.userId, newOrderIds)
+    await tasksStore.reorderTasks(appStore.sessionToken, newOrderIds)
     
     // Immediately restore scroll after update
     restoreScroll()
@@ -1259,7 +1259,7 @@ const handleDrop = async (index, event) => {
   } catch (err) {
     console.error('Failed to reorder tasks:', err)
     // Tasks are already reverted in the store, just refresh to ensure consistency
-    await tasksStore.fetchTasks(appStore.userId)
+    await tasksStore.fetchTasks(appStore.sessionToken)
     // Restore scroll position after refresh
     await nextTick()
     restoreScroll()
@@ -1307,7 +1307,7 @@ const switchToEditMode = () => {
 }
 
 const handleClearArchived = async () => {
-  if (!appStore.userId) {
+  if (!appStore.sessionToken) {
     return
   }
 
@@ -1326,12 +1326,12 @@ const handleClearArchived = async () => {
   try {
     // Delete all completed tasks
     const deletePromises = completedTasks.map(task => 
-      tasksStore.deleteTask(task._id, appStore.userId)
+      tasksStore.deleteTask(appStore.sessionToken, task._id)
     )
     await Promise.all(deletePromises)
     
     // Refresh tasks to update the list
-    await tasksStore.fetchTasks(appStore.userId)
+    await tasksStore.fetchTasks(appStore.sessionToken)
   } catch (err) {
     console.error('Error clearing archived tasks:', err)
     tasksStore.error = err.message || 'Failed to clear archived tasks'

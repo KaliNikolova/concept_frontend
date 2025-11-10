@@ -71,6 +71,7 @@
                 v-for="scheduledTask in scheduledTasks" 
                 :key="scheduledTask._id" 
                 class="timeline-slot task-slot"
+                :class="{ 'task-completed': isTaskCompleted(scheduledTask) }"
                 :style="getTaskSlotStyle(scheduledTask)"
                 @click="handleTaskClick(scheduledTask)"
               >
@@ -91,10 +92,10 @@
 
                             <!-- Action Buttons (Right) -->
           <div class="action-buttons-section">
-            <!-- Plan Day Button (aligned with date + block time) -->
+            <!-- Focus Button (aligned with date + block time) -->
             <div class="plan-day-header">
-              <button @click="handlePlanOrReplan" class="purple-btn plan-btn" :disabled="planning || replanning">
-                {{ planning ? 'Planning...' : replanning ? 'Replanning...' : hasPlanned ? 'Replan' : 'Plan Day' }}
+              <button @click="openFocusModal" class="purple-btn focus-btn">
+                Focus
               </button>
             </div>
 
@@ -163,6 +164,13 @@
                     </div>
                   </div>
               </div>
+            </div>
+
+            <!-- Plan Day / Replan Button -->
+            <div class="plan-day-container">
+              <button @click="handlePlanOrReplan" class="purple-btn plan-btn" :disabled="planning || replanning">
+                {{ planning ? 'Planning...' : replanning ? 'Replanning...' : hasPlanned ? 'Replan' : 'Plan Day' }}
+              </button>
             </div>
 
             <!-- Clear Day at bottom (aligned with schedule end) -->
@@ -378,6 +386,97 @@
           </form>
         </div>
       </div>
+
+      <!-- Focus Task Modal -->
+      <div v-if="showFocusModal" class="modal-overlay" @click="closeFocusModal">
+        <div class="modal-content focus-modal-content" @click.stop>
+          <h2 class="modal-title">Current Focus</h2>
+          
+          <!-- Loading State -->
+          <div v-if="loadingFocus" class="loading-message">
+            Loading current task...
+          </div>
+          
+          <!-- Focus Task Content -->
+          <div v-else-if="focusTask && !taskCompleted" class="focus-task-content">
+            <h3 class="focus-task-title">{{ focusTask.title || focusTask.description || 'Untitled Task' }}</h3>
+            
+            <div class="focus-task-meta">
+              <span v-if="focusTask.dueDate" class="focus-meta-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                  <line x1="16" y1="2" x2="16" y2="6"></line>
+                  <line x1="8" y1="2" x2="8" y2="6"></line>
+                  <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                {{ formatTaskDueDate(focusTask.dueDate) }}
+              </span>
+              <span v-if="focusTask.estimatedDuration" class="focus-meta-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                {{ formatTaskDuration(focusTask.estimatedDuration) }}
+              </span>
+            </div>
+            
+            <p v-if="focusTask.description && focusTask.title" class="focus-task-description">{{ focusTask.description }}</p>
+            
+            <div v-if="focusError" class="error-message">
+              {{ focusError }}
+            </div>
+            
+            <div class="modal-actions">
+              <button type="button" @click="closeFocusModal" class="cancel-btn">
+                Close
+              </button>
+              <button type="button" @click="handleMarkFocusComplete" class="purple-btn" :disabled="completingTask">
+                {{ completingTask ? 'Completing...' : 'Mark Complete' }}
+              </button>
+            </div>
+          </div>
+          
+          <!-- Task Completed State -->
+          <div v-else-if="taskCompleted" class="focus-completion-content">
+            <div class="completion-message">
+              <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="completion-icon">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <h3 class="completion-title">Nice job!</h3>
+              <p class="completion-text">Task completed successfully.</p>
+            </div>
+            
+            <div v-if="focusError" class="error-message">
+              {{ focusError }}
+            </div>
+            
+            <div class="modal-actions">
+              <button type="button" @click="closeFocusModal" class="cancel-btn">
+                Close
+              </button>
+              <button v-if="hasNextTask" type="button" @click="loadNextTask" class="purple-btn">
+                Next Task
+              </button>
+            </div>
+          </div>
+          
+          <!-- No Focus Task State -->
+          <div v-else class="focus-empty-content">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="empty-icon">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <h3 class="empty-title">No Focus Task Set</h3>
+            <p class="empty-description">Plan your day to automatically set your first task as the current focus.</p>
+            
+            <div class="modal-actions">
+              <button type="button" @click="closeFocusModal" class="cancel-btn">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -387,6 +486,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import * as scheduleApi from '@/api/schedule.js'
 import * as plannerApi from '@/api/planner.js'
 import * as tasksApi from '@/api/tasks.js'
+import * as focusApi from '@/api/focus.js'
 import { useAppStore } from '@/stores/app.js'
 import { useTasksStore } from '@/stores/tasks.js'
 import { usePlannerStore } from '@/stores/planner.js'
@@ -405,7 +505,7 @@ const busySlots = ref([])
 const scheduledTasks = computed(() => {
   return plannerStore.todayScheduledTasks.map(scheduledTask => ({
     _id: scheduledTask.task, // Use task ID as _id for display
-    owner: appStore.userId,
+    owner: appStore.sessionToken,
     task: scheduledTask.task, // The task ID
     plannedStart: scheduledTask.plannedStart,
     plannedEnd: scheduledTask.plannedEnd
@@ -443,6 +543,15 @@ const endYearScrollRef = ref(null)
 const months = ref(['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'])
 const years = ref(Array.from({ length: 100 }, (_, i) => new Date().getFullYear() - 50 + i))
 
+// Focus modal state
+const showFocusModal = ref(false)
+const focusTask = ref(null)
+const loadingFocus = ref(false)
+const completingTask = ref(false)
+const taskCompleted = ref(false)
+const focusError = ref('')
+const hasNextTask = ref(false)
+
 // Hours for timeline (12 AM to 11 PM - all 24 hours)
 const hours = ref(Array.from({ length: 24 }, (_, i) => i))
 
@@ -457,9 +566,9 @@ const timelineRef = ref(null)
 
 // Load working day settings from localStorage
 const loadWorkingDaySettings = () => {
-  if (!appStore.userId) return
+  if (!appStore.sessionToken) return
   
-  const key = `workingDay_${appStore.userId}`
+  const key = `workingDay_${appStore.sessionToken}`
   const saved = localStorage.getItem(key)
   if (saved) {
     try {
@@ -586,9 +695,9 @@ const loadWorkingDaySettings = () => {
   }
 
   const saveWorkingDaySettings = () => {
-    if (!appStore.userId) return
+    if (!appStore.sessionToken) return
 
-    const key = `workingDay_${appStore.userId}`
+    const key = `workingDay_${appStore.sessionToken}`
     
     // Convert Date objects to HH:MM string format for storage
     let startValue = workingDayStart.value
@@ -725,34 +834,26 @@ const sleepingTimeBlocks = computed(() => {
 // Load busy slots from Schedule database (Schedule concept)
 // Fetch busy slots from Schedule concept via schedule store
 const loadBusySlots = async () => {
-  if (!appStore.userId) return
-  
-  loading.value = true
-  error.value = ''
+  if (!appStore.sessionToken) return
   
   try {
-    // Use schedule store to fetch busy slots from Schedule concept
-    await scheduleStore.fetchSlots(appStore.userId)
+    // Fetch busy slots from Schedule concept via schedule store
+    await scheduleStore.fetchSlots(appStore.sessionToken)
     busySlots.value = scheduleStore.busySlots
   } catch (err) {
     error.value = err.message || 'Failed to load busy slots'
     busySlots.value = []
-  } finally {
-    loading.value = false
   }
 }
 
 const loadScheduledTasks = async () => {
-  if (!appStore.userId) return
+  if (!appStore.sessionToken) return
   
   try {
     // Scheduled tasks are now computed from planner store, so they're always up-to-date
     // Just sync tasks with scheduled times
     console.log('All scheduled tasks in store:', plannerStore.scheduledTasks)
     console.log('Filtered scheduled tasks (todayScheduledTasks):', plannerStore.todayScheduledTasks)
-    
-    // Sync tasks with scheduled times
-    plannerStore.syncTasksWithScheduled(tasksStore)
     
     console.log('Loaded scheduled tasks (computed):', scheduledTasks.value)
   } catch (err) {
@@ -803,6 +904,32 @@ const formatTimeForDisplay = (timeValue) => {
   const ampm = hours >= 12 ? 'PM' : 'AM'
   const hour12 = hours % 12 || 12
   return `${hour12}:${String(minutes).padStart(2, '0')} ${ampm}`
+}
+
+// Format task due date for focus modal
+const formatTaskDueDate = (date) => {
+  if (!date) return ''
+  const d = new Date(date)
+  return d.toLocaleDateString('en-US', { 
+    weekday: 'short',
+    month: 'short', 
+    day: 'numeric',
+    year: 'numeric'
+  })
+}
+
+// Format task duration for focus modal
+const formatTaskDuration = (minutes) => {
+  if (!minutes) return ''
+  if (minutes < 60) {
+    return `${minutes} min`
+  }
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  if (mins === 0) {
+    return `${hours} hr`
+  }
+  return `${hours} hr ${mins} min`
 }
 
 // Format date for display in text field
@@ -1513,7 +1640,7 @@ const closeSlotModal = () => {
 }
 
 const handleSlotSubmit = async () => {
-  if (!appStore.userId) return
+  if (!appStore.sessionToken) return
   
   savingSlot.value = true
   slotError.value = ''
@@ -1578,24 +1705,27 @@ const handleSlotSubmit = async () => {
     if (slotModalMode.value === 'add') {
       // Save blocked slot to Schedule database (Schedule concept)
       // This creates a BusySlot with origin=MANUAL in the Schedule concept
-      await scheduleApi.blockTime(
-        appStore.userId,
+      const response = await scheduleApi.blockTime(
+        appStore.sessionToken,
         startDateTime.toISOString(),
         endDateTime.toISOString(),
         slotForm.value.description.trim()
       )
-      // Refresh busy slots from Schedule database to show the new slot
+      
+      // Refresh busy slots from backend to get the complete slot data
       await loadBusySlots()
       closeSlotModal()
     } else if (slotModalMode.value === 'edit' && currentSlot.value) {
       // Update blocked slot in Schedule database (Schedule concept)
       await scheduleApi.updateSlot(
+        appStore.sessionToken,  // Add missing session parameter
         currentSlot.value._id,
         startDateTime.toISOString(),
         endDateTime.toISOString(),
         slotForm.value.description.trim()
       )
-      // Refresh busy slots from Schedule database to show the updated slot
+      
+      // Refresh busy slots from backend to get the updated slot data
       await loadBusySlots()
       closeSlotModal()
     }
@@ -1607,7 +1737,7 @@ const handleSlotSubmit = async () => {
 }
 
 const handleDeleteSlot = async () => {
-  if (!currentSlot.value || !appStore.userId) {
+  if (!currentSlot.value || !appStore.sessionToken) {
     return
   }
   
@@ -1619,7 +1749,9 @@ const handleDeleteSlot = async () => {
   slotError.value = ''
   
   try {
-    await scheduleApi.deleteSlot(currentSlot.value._id)
+    await scheduleApi.deleteSlot(appStore.sessionToken, currentSlot.value._id)
+    
+    // Refresh busy slots from backend
     await loadBusySlots()
     closeSlotModal()
   } catch (err) {
@@ -1640,7 +1772,7 @@ const handlePlanOrReplan = async () => {
 
 // Plan day handlers
 const handlePlanDay = async () => {
-  if (!appStore.userId) {
+  if (!appStore.sessionToken) {
     return
   }
   
@@ -1651,7 +1783,7 @@ const handlePlanDay = async () => {
     // Use Pinia stores to get data from concepts
     // Fetch tasks from Tasks concept via tasks store
     if (!tasksStore.tasks.length) {
-      await tasksStore.fetchTasks(appStore.userId)
+      await tasksStore.fetchTasks(appStore.sessionToken)
     }
     
     // Fetch busy slots from Schedule concept via schedule store
@@ -1668,7 +1800,24 @@ const handlePlanDay = async () => {
     const formattedTasks = todoTasks.map(task => ({
       id: task._id,
       duration: task.estimatedDuration || 60 // Duration in minutes (backend expects minutes)
-    }))
+    })).filter(task => {
+      // Validate task has valid ID and positive duration
+      if (!task.id) {
+        console.warn('Task missing ID, filtering out:', task)
+        return false
+      }
+      if (!task.duration || task.duration <= 0) {
+        console.warn('Task has invalid duration, filtering out:', task)
+        return false
+      }
+      return true
+    })
+    
+    if (formattedTasks.length === 0) {
+      error.value = 'No valid tasks to plan. Please ensure tasks have valid data.'
+      planning.value = false
+      return
+    }
     
     // Format busy slots from schedule store - include all busy slots (both manual and external)
     let formattedBusySlots = busySlots.value.map(slot => ({
@@ -1716,18 +1865,20 @@ const handlePlanDay = async () => {
     }
     
     console.log('Planning day with:', {
-      userId: appStore.userId,
+      userId: appStore.sessionToken,
       tasks: formattedTasks,
-      busySlots: formattedBusySlots
+      busySlots: formattedBusySlots,
+      planningDate: planningDate.toISOString()
     })
     console.log('Tasks detail:', JSON.stringify(formattedTasks, null, 2))
     console.log('BusySlots detail (from Schedule + existing scheduled):', JSON.stringify(formattedBusySlots, null, 2))
     
     // Use planner store to plan day (it will refresh scheduled tasks)
     const response = await plannerStore.planDay(
-      appStore.userId,
+      appStore.sessionToken,
       formattedTasks,
-      formattedBusySlots
+      formattedBusySlots,
+      planningDate  // Pass planning date for timezone correction
     )
     
     console.log('Plan day response:', response)
@@ -1744,7 +1895,7 @@ const handlePlanDay = async () => {
 }
 
 const handleClearDay = async () => {
-  if (!appStore.userId) {
+  if (!appStore.sessionToken) {
     return
   }
   
@@ -1757,10 +1908,7 @@ const handleClearDay = async () => {
   
   try {
     // Clear all scheduled tasks via planner store
-    await plannerStore.clearDay(appStore.userId)
-    
-    // Sync tasks store (remove plannedStart/plannedEnd from tasks)
-    plannerStore.syncTasksWithScheduled(tasksStore)
+    await plannerStore.clearDay(appStore.sessionToken)
     
     // Refresh busy slots
     await loadBusySlots()
@@ -1777,8 +1925,113 @@ const handleClearDay = async () => {
   }
 }
 
+// Focus modal handlers
+const openFocusModal = async () => {
+  showFocusModal.value = true
+  taskCompleted.value = false
+  focusError.value = ''
+  await fetchCurrentFocusTask()
+}
+
+const closeFocusModal = () => {
+  showFocusModal.value = false
+  focusTask.value = null
+  taskCompleted.value = false
+  focusError.value = ''
+  hasNextTask.value = false
+}
+
+const fetchCurrentFocusTask = async () => {
+  console.log('Fetching current focus task...')
+  if (!appStore.sessionToken) {
+    console.warn('No session token available')
+    return
+  }
+  
+  loadingFocus.value = true
+  focusError.value = ''
+  
+  try {
+    // Check if there are any scheduled tasks first
+    if (scheduledTasks.value.length === 0) {
+      console.log('No scheduled tasks - skipping focus task fetch')
+      focusTask.value = null
+      loadingFocus.value = false
+      return
+    }
+    
+    // Ensure tasks are loaded first
+    if (tasksStore.tasks.length === 0) {
+      console.log('Tasks not loaded, fetching...')
+      await tasksStore.fetchTasks(appStore.sessionToken)
+    } else {
+      console.log(`Tasks already loaded (${tasksStore.tasks.length} tasks)`)
+    }
+    
+    console.log('Calling focusApi.getCurrentTask...')
+    const response = await focusApi.getCurrentTask(appStore.sessionToken)
+    console.log('Raw response from getCurrentTask:', response)
+    
+    // Backend returns: { "task": "ID" } - direct object
+    const taskId = response?.task
+    
+    if (taskId) {
+      // Get full task details from tasks store
+      const task = tasksStore.tasks.find(t => t._id === taskId)
+      focusTask.value = task || null
+      console.log('✓ Current focus task:', task?.title || taskId)
+    } else {
+      focusTask.value = null
+      console.log('No current focus task set by backend')
+    }
+  } catch (err) {
+    console.error('Failed to fetch current task:', err)
+    focusError.value = err.message || 'Failed to load focus task'
+    focusTask.value = null
+  } finally {
+    loadingFocus.value = false
+  }
+}
+
+const handleMarkFocusComplete = async () => {
+  if (!focusTask.value || !appStore.sessionToken) return
+  
+  completingTask.value = true
+  focusError.value = ''
+  
+  try {
+    // Mark task complete on backend
+    await tasksApi.markTaskComplete(appStore.sessionToken, focusTask.value._id)
+    
+    // Backend automatically sets next scheduled task as focus via sync
+    // Refresh tasks to update status
+    await tasksStore.fetchTasks(appStore.sessionToken)
+    
+    // Show completion state
+    taskCompleted.value = true
+    
+    // Check if there's a next task
+    await fetchCurrentFocusTask()
+    hasNextTask.value = !!focusTask.value
+    
+    // Refresh scheduled tasks (completed task should be removed from schedule)
+    await loadScheduledTasks()
+    
+  } catch (err) {
+    focusError.value = err.message || 'Failed to mark task complete'
+  } finally {
+    completingTask.value = false
+  }
+}
+
+const loadNextTask = async () => {
+  taskCompleted.value = false
+  focusError.value = ''
+  await fetchCurrentFocusTask()
+}
+
 const handleReplan = async () => {
-  if (!appStore.userId) {
+  if (!appStore.sessionToken) {
     return
   }
   
@@ -1788,10 +2041,10 @@ const handleReplan = async () => {
   try {
     // Fetch tasks if not loaded
     if (!tasksStore.tasks.length) {
-      await tasksStore.fetchTasks(appStore.userId)
+      await tasksStore.fetchTasks(appStore.sessionToken)
     }
     
-    // ALWAYS fetch fresh busy slots from Schedule database
+    // Fetch fresh busy slots from Schedule database
     // This ensures we have the latest blocked times from Schedule concept
     await loadBusySlots()
     
@@ -1847,14 +2100,11 @@ const handleReplan = async () => {
       // Replan: Clear all scheduled tasks, then plan day fresh (same as Plan Day)
     // Use planner store to replan (it will clear day then plan)
     const response = await plannerStore.replan(
-      appStore.userId,
+      appStore.sessionToken,
       formattedTasks,
-      formattedBusySlots
+      formattedBusySlots,
+      planningDate  // Pass planning date for timezone correction
     )
-    
-    // Schedule is calculated locally in plannerStore.replan()
-    // Sync scheduled tasks with tasks store
-    plannerStore.syncTasksWithScheduled(tasksStore)
     
     // Refresh busy slots to show updated schedule
     await loadBusySlots()
@@ -1875,6 +2125,13 @@ const getScheduledTaskTitle = (scheduledTask) => {
   // scheduledTask.task is the task ID, look it up in tasks store
   const task = tasksStore.tasks.find(t => t._id === scheduledTask.task)
   return task?.title || task?.description || 'Task'
+}
+
+// Check if a scheduled task is completed
+const isTaskCompleted = (scheduledTask) => {
+  // scheduledTask.task is the task ID, look it up in tasks store
+  const task = tasksStore.tasks.find(t => t._id === scheduledTask.task)
+  return task?.status === 'DONE'
 }
 
 // Check if busy slot time should be hidden (overlapping AND limited space)
@@ -1941,7 +2198,7 @@ const handleNavigateToPlan = () => {
 }
 
 const handleNavigateToFocus = async () => {
-  if (!appStore.userId) {
+  if (!appStore.sessionToken) {
     return
   }
 
@@ -1969,14 +2226,10 @@ const handleNavigateToFocus = async () => {
 
     // Use planner store to plan day (it will calculate schedule locally)
     const response = await plannerStore.planDay(
-      appStore.userId,
+      appStore.sessionToken,
       formattedTasks,
       formattedBusySlots
     )
-
-    // Schedule is calculated locally in plannerStore.planDay()
-    // Sync scheduled tasks with tasks store
-    plannerStore.syncTasksWithScheduled(tasksStore)
 
     if (response?.firstTask) {
       const firstTaskObject = tasksStore.tasks.find(task => task._id === response.firstTask)
@@ -1995,7 +2248,7 @@ const handleNavigateToFocus = async () => {
 }
 
 // Watch for user changes
-watch(() => appStore.userId, (newUserId) => {
+watch(() => appStore.sessionToken, (newUserId) => {
   if (newUserId) {
     loadWorkingDaySettings()
     loadBusySlots()
@@ -2039,7 +2292,7 @@ watch(loading, (newLoading) => {
 
 // Load on mount
 onMounted(() => {
-  if (appStore.userId) {
+  if (appStore.sessionToken) {
     loadWorkingDaySettings()
     loadBusySlots()
     loadScheduledTasks()
@@ -2265,9 +2518,10 @@ onMounted(() => {
   min-width: 160px;
   margin-left: 50px; /* Remove left margin since we're using space-between */
   margin-right: 50px;
+  margin-top: -12px;
   align-items: flex-start;
   position: relative;
-  height: 531px; /* Match actual schedule height: header (19px + ~20px + 12px) + scroll container (480px) = ~531px */
+  height: 543px; /* Match actual schedule height: header (19px + ~20px + 12px) + scroll container (480px) = ~531px */
   justify-content: space-between;
 }
 
@@ -2275,6 +2529,12 @@ onMounted(() => {
   margin-top: 31px; /* Match timeline-header margin-top to align with date + block time, plus 10px extra */
   margin-bottom: 12px; /* Match timeline-header margin-bottom */
   width: 100%;
+}
+
+.plan-day-container {
+  align-self: stretch;
+  margin-top: 16px;
+  margin-bottom: 16px;
 }
 
 .working-day-wrapper {
@@ -2295,7 +2555,7 @@ onMounted(() => {
   border-radius: 12px;
   padding: 16px;
   margin-bottom: 8px;
-  margin-top: 0;
+  margin-top: -12px;
   align-self: stretch;
 }
 
@@ -2460,7 +2720,8 @@ onMounted(() => {
 /* .add-slot-btn now uses shared .gray-btn class from style.css */
 
 .plan-btn,
-.replan-btn {
+.replan-btn,
+.focus-btn {
   width: 100%;
 }
 
@@ -2684,6 +2945,15 @@ onMounted(() => {
   border-bottom: 1px solid rgba(102, 126, 234, 0.2);
   border-right: 1px solid rgba(102, 126, 234, 0.15);
   color: #667eea;
+}
+
+.task-slot.task-completed {
+  background: rgba(72, 187, 120, 0.15);
+  border-left: 4px solid #48bb78;
+  border-top: 1px solid rgba(72, 187, 120, 0.2);
+  border-bottom: 1px solid rgba(72, 187, 120, 0.2);
+  border-right: 1px solid rgba(72, 187, 120, 0.15);
+  color: #48bb78;
 }
 
 .slot-content {
@@ -2948,6 +3218,98 @@ onMounted(() => {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+/* Focus Modal Specific Styles */
+.focus-task-content,
+.focus-completion-content,
+.focus-empty-content {
+  padding: 20px 0;
+}
+
+.focus-task-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 20px 0;
+  text-align: center;
+}
+
+.focus-task-meta {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.focus-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #666;
+  font-size: 14px;
+}
+
+.focus-meta-item svg {
+  color: #667eea;
+}
+
+.focus-task-description {
+  color: #666;
+  font-size: 16px;
+  line-height: 1.6;
+  margin: 20px 0;
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+.completion-message {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.completion-icon {
+  color: #48bb78;
+  margin: 0 auto 20px;
+  display: block;
+}
+
+.completion-title {
+  font-size: 28px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 10px 0;
+}
+
+.completion-text {
+  font-size: 16px;
+  color: #666;
+  margin: 0;
+}
+
+.focus-empty-content {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.empty-icon {
+  color: #cbd5e0;
+  margin: 0 auto 20px;
+  display: block;
+}
+
+.empty-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 10px 0;
+}
+
+.empty-description {
+  font-size: 14px;
+  color: #666;
+  margin: 0 0 20px 0;
 }
 
 /* Style time picker to match date picker */

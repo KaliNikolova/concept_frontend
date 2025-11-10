@@ -24,7 +24,7 @@ export async function register(email, password, displayName) {
  * Login with email and password
  * @param {string} email - User email
  * @param {string} password - User password
- * @returns {Promise<{user: string}>} User ID
+ * @returns {Promise<{session: string}>} Session token
  */
 export async function login(email, password) {
   return apiClient.post('/UserAccount/login', {
@@ -34,47 +34,60 @@ export async function login(email, password) {
 }
 
 /**
+ * Logout and invalidate the current session
+ * @param {string} session - Session token
+ * @returns {Promise<{}>} Empty response
+ */
+export async function logout(session) {
+  return apiClient.post('/UserAccount/logout', {
+    session
+  });
+}
+
+/**
  * Update user profile display name
- * @param {string} user - User ID
+ * @param {string} session - Session token
  * @param {string} newDisplayName - New display name
  * @returns {Promise<{}>} Empty response
  */
-export async function updateProfile(user, newDisplayName) {
+export async function updateProfile(session, newDisplayName) {
   return apiClient.post('/UserAccount/updateProfile', {
-    user,
+    session,
     newDisplayName
   });
 }
 
 /**
  * Delete user account
- * @param {string} user - User ID
+ * @param {string} session - Session token
  * @returns {Promise<{}>} Empty response
  */
-export async function deleteAccount(user) {
+export async function deleteAccount(session) {
   return apiClient.post('/UserAccount/deleteAccount', {
-    user
+    session
   });
 }
 
 /**
- * Get user profile information
- * @param {string} user - User ID
- * @returns {Promise<Array<{displayName: string, email: string}>>} User profile
+ * Get user profile information for the authenticated user
+ * @param {string} session - Session token
+ * @returns {Promise<{profile: {displayName: string, email: string}}>} User profile
  */
-export async function getUserProfile(user) {
+export async function getUserProfile(session) {
   return apiClient.post('/UserAccount/_getUserProfile', {
-    user
+    session
   });
 }
 
 /**
  * Find user by email
+ * @param {string} session - Session token
  * @param {string} email - Email address
- * @returns {Promise<Array<{user: string}>>} User ID
+ * @returns {Promise<string>} User ID
  */
-export async function findUserByEmail(email) {
+export async function findUserByEmail(session, email) {
   return apiClient.post('/UserAccount/_findUserByEmail', {
+    session,
     email
   });
 }

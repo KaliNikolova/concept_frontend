@@ -124,11 +124,9 @@ const handleSubmit = async () => {
         password.value
       )
 
-      // Set user session in store with email (this will automatically navigate)
-      appStore.setUserSession({
-        ...response,
-        email: email.value
-      })
+      // Set session token in store (user data fetched from backend when needed)
+      appStore.setSessionToken(response.session)
+      console.log('✓ Logged in successfully')
 
       // Reset form
       email.value = ''

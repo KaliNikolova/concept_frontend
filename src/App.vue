@@ -6,9 +6,6 @@
     <TaskView 
       v-else-if="appStore.appState === 'tasks'"
     />
-      <FocusView 
-        v-else-if="appStore.appState === 'focus'"
-      />
       <PlanView 
         v-else-if="appStore.appState === 'plan'"
       />
@@ -19,7 +16,6 @@
 import { onMounted } from 'vue'
 import AuthView from '@/views/AuthView.vue'
 import TaskView from '@/views/TaskView.vue'
-import FocusView from '@/views/FocusView.vue'
 import PlanView from '@/views/PlanView.vue'
 import { useAppStore } from '@/stores/app.js'
 

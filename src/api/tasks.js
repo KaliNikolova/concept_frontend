@@ -7,27 +7,27 @@ import apiClient from './client.js';
 
 /**
  * Create an empty task list for a new user
- * @param {string} user - User ID
+ * @param {string} session - Session token
  * @returns {Promise<{}>} Empty response
  */
-export async function createUserTasks(user) {
+export async function createUserTasks(session) {
   return apiClient.post('/Tasks/createUserTasks', {
-    user
+    session
   });
 }
 
 /**
  * Create a new task
- * @param {string} owner - User ID (owner)
+ * @param {string} session - Session token
  * @param {string} title - Task title
  * @param {string} description - Task description
  * @param {string|Date} dueDate - Task due date (DateTime)
  * @param {number} estimatedDuration - Estimated duration in minutes
  * @returns {Promise<{task: string}>} Task ID
  */
-export async function createTask(owner, title, description, dueDate, estimatedDuration) {
+export async function createTask(session, title, description, dueDate, estimatedDuration) {
   return apiClient.post('/Tasks/createTask', {
-    owner,
+    session,
     title,
     description,
     dueDate: dueDate instanceof Date ? dueDate.toISOString() : dueDate,
@@ -37,6 +37,7 @@ export async function createTask(owner, title, description, dueDate, estimatedDu
 
 /**
  * Update an existing task
+ * @param {string} session - Session token
  * @param {string} task - Task ID
  * @param {string} newTitle - New title
  * @param {string} newDescription - New description
@@ -44,8 +45,9 @@ export async function createTask(owner, title, description, dueDate, estimatedDu
  * @param {number} newEstimatedDuration - New estimated duration in minutes
  * @returns {Promise<{}>} Empty response
  */
-export async function updateTask(task, newTitle, newDescription, newDueDate, newEstimatedDuration) {
+export async function updateTask(session, task, newTitle, newDescription, newDueDate, newEstimatedDuration) {
   return apiClient.post('/Tasks/updateTask', {
+    session,
     task,
     newTitle,
     newDescription,
@@ -56,68 +58,73 @@ export async function updateTask(task, newTitle, newDescription, newDueDate, new
 
 /**
  * Reorder tasks
- * @param {string} user - User ID
+ * @param {string} session - Session token
  * @param {string[]} newOrder - Array of task IDs in new order
  * @returns {Promise<{}>} Empty response
  */
-export async function reorderTasks(user, newOrder) {
+export async function reorderTasks(session, newOrder) {
   return apiClient.post('/Tasks/reorderTasks', {
-    user,
+    session,
     newOrder
-  });
+  }, 15000); // 15 second timeout
 }
 
 /**
  * Mark a task as complete
+ * @param {string} session - Session token
  * @param {string} task - Task ID
  * @returns {Promise<{}>} Empty response
  */
-export async function markTaskComplete(task) {
+export async function markTaskComplete(session, task) {
   return apiClient.post('/Tasks/markTaskComplete', {
+    session,
     task
   });
 }
 
 /**
  * Delete a task
+ * @param {string} session - Session token
  * @param {string} task - Task ID
  * @returns {Promise<{}>} Empty response
  */
-export async function deleteTask(task) {
+export async function deleteTask(session, task) {
   return apiClient.post('/Tasks/deleteTask', {
+    session,
     task
   });
 }
 
 /**
- * Delete all tasks for a user
- * @param {string} user - User ID
+ * Delete all tasks for the authenticated user
+ * @param {string} session - Session token
  * @returns {Promise<{}>} Empty response
  */
-export async function deleteAllForUser(user) {
+export async function deleteAllForUser(session) {
   return apiClient.post('/Tasks/deleteAllForUser', {
-    user
+    session
   });
 }
 
 /**
- * Get all tasks for a user
- * @param {string} user - User ID
- * @returns {Promise<Array<{_id: string, owner: string, description: string, dueDate: string, estimatedDuration: number, status: string}>>} Task list
+ * Get all tasks for the authenticated user
+ * @param {string} session - Session token
+ * @returns {Promise<Array<{_id: string, owner: string, title: string, description: string, dueDate: string, estimatedDuration: number, status: string}>>} Task list
  */
-export async function getTasks(user) {
+export async function getTasks(session) {
+  // Increase timeout to 15 seconds for tasks query
   return apiClient.post('/Tasks/_getTasks', {
-    user
-  });
+    session
+  }, 15000);
 }
 
 /**
- * Get remaining (TODO) tasks for a user
- * @param {string} user - User ID
- * @returns {Promise<Array<{_id: string, owner: string, description: string, dueDate: string, estimatedDuration: number, status: string}>>} Task list
+ * Get remaining (TODO) tasks for the authenticated user
+ * @param {string} session - Session token
+ * @returns {Promise<Array<{_id: string, owner: string, title: string, description: string, dueDate: string, estimatedDuration: number, status: string}>>} Task list
  */
-export async function getRemainingTasks(user) {
+export async function getRemainingTasks(session) {
   return apiClient.post('/Tasks/_getRemainingTasks', {
-    user
-  });
+    session
+  }, 15000);
 }

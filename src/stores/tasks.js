@@ -16,9 +16,9 @@ export const useTasksStore = defineStore('tasks', {
   },
 
   actions: {
-    async fetchTasks(userId) {
-      if (!userId) {
-        this.error = 'No user ID available'
+    async fetchTasks(session) {
+      if (!session) {
+        this.error = 'No session token available'
         this.loading = false
         this.fetching = false
         return
@@ -34,21 +34,27 @@ export const useTasksStore = defineStore('tasks', {
       this.error = null
 
       try {
-        const taskList = await tasksApi.getTasks(userId)
+        console.log('Fetching tasks from backend...')
+        const response = await tasksApi.getTasks(session)
+        console.log('Raw response from getTasks:', response)
         
-        // Handle different possible response formats
+        // Backend returns: { "tasks": [...] } - object with tasks array
         let tasksArray = []
-        if (Array.isArray(taskList)) {
-          tasksArray = taskList
-        } else if (taskList && Array.isArray(taskList.tasks)) {
-          tasksArray = taskList.tasks
-        } else if (taskList && Array.isArray(taskList.data)) {
-          tasksArray = taskList.data
-        } else if (taskList && typeof taskList === 'object') {
-          // If it's an object but not an array, try to extract tasks
-          console.warn('Unexpected response format from getTasks:', taskList)
-          tasksArray = []
+        if (response?.tasks && Array.isArray(response.tasks)) {
+          // Current format: { tasks: [...] }
+          console.log('Using format: response.tasks')
+          tasksArray = response.tasks
+        } else if (Array.isArray(response) && response.length > 0 && response[0].tasks) {
+          // Alternative format: [{ tasks: [...] }]
+          console.log('Using array format: response[0].tasks')
+          tasksArray = response[0].tasks
+        } else if (Array.isArray(response)) {
+          // Fallback: direct array
+          console.log('Using fallback: direct array')
+          tasksArray = response
         }
+        
+        console.log('Extracted tasks array:', tasksArray)
         
         // Always update when we get data from the server
         // Ensure all tasks have a status property
@@ -56,6 +62,8 @@ export const useTasksStore = defineStore('tasks', {
           ...task,
           status: task.status || 'TODO'
         }))
+        
+        console.log('✓ Loaded', this.tasks.length, 'tasks')
       } catch (err) {
         const errorMsg = err.message || 'Failed to load tasks'
         
@@ -74,20 +82,20 @@ export const useTasksStore = defineStore('tasks', {
       }
     },
 
-          async createTask(userId, title, description, dueDate, estimatedDuration) {
-            if (!userId) {
-              throw new Error('No user ID available')
+          async createTask(session, title, description, dueDate, estimatedDuration) {
+            if (!session) {
+              throw new Error('No session token available')
             }
 
             try {
-              const response = await tasksApi.createTask(userId, title, description, dueDate, estimatedDuration)
+              const response = await tasksApi.createTask(session, title, description, dueDate, estimatedDuration)
               
               // If we got a task ID back, add it to the list optimistically
               const taskId = response?.task || response?._id || response?.id
               if (taskId) {
                 const newTask = {
                   _id: taskId,
-                  owner: userId,
+                  owner: session,
                   title: title,
                   description: description,
                   dueDate: dueDate,
@@ -102,64 +110,28 @@ export const useTasksStore = defineStore('tasks', {
               
               // Refresh tasks after creation (in background, don't block on it)
               // This will update the list with the full task data from the server
-              this.fetchTasks(userId).catch(err => {
+              this.fetchTasks(session).catch(err => {
                 console.error('Failed to refresh tasks after creation:', err)
                 // Don't throw - task was created successfully, optimistic update is already shown
               })
             } catch (err) {
               const errorMsg = err.message || 'Failed to create task'
-              
-              // If the error is about missing task list, create it automatically and retry
-              if (errorMsg.includes('No task list found')) {
-                try {
-                  // Create the task list first
-                  await tasksApi.createUserTasks(userId)
-                  // Retry creating the task
-                  const response = await tasksApi.createTask(userId, title, description, dueDate, estimatedDuration)
-                  
-                  // If we got a task ID back, add it to the list optimistically
-                  const taskId = response?.task || response?._id || response?.id
-                  if (taskId) {
-                    const newTask = {
-                      _id: taskId,
-                      owner: userId,
-                      title: title,
-                      description: description,
-                      dueDate: dueDate,
-                      estimatedDuration: estimatedDuration,
-                      status: 'TODO'
-                    }
-                    // Add to front of list so it appears immediately
-                    this.tasks = [newTask, ...this.tasks]
-                  } else {
-                    console.warn('createTask response did not contain task ID:', response)
-                  }
-                  
-                  // Refresh tasks after creation (in background)
-                  this.fetchTasks(userId).catch(refreshErr => {
-                    console.error('Failed to refresh tasks after creation:', refreshErr)
-                  })
-                } catch (retryErr) {
-                  this.error = retryErr.message || 'Failed to create task list or task'
-                  throw retryErr
-                }
-              } else {
-                this.error = errorMsg
-                throw err
-              }
+              this.error = errorMsg
+              console.error('Failed to create task:', err)
+              throw err
             }
           },
 
-    async markTaskComplete(taskId, userId) {
+    async markTaskComplete(session, taskId) {
       if (!taskId) {
         throw new Error('No task ID provided')
       }
 
       try {
-        await tasksApi.markTaskComplete(taskId)
+        await tasksApi.markTaskComplete(session, taskId)
         // Refresh tasks after marking complete
-        if (userId) {
-          await this.fetchTasks(userId)
+        if (session) {
+          await this.fetchTasks(session)
         }
       } catch (err) {
         this.error = err.message || 'Failed to mark task complete'
@@ -167,16 +139,16 @@ export const useTasksStore = defineStore('tasks', {
       }
     },
 
-          async updateTask(taskId, newTitle, newDescription, newDueDate, newEstimatedDuration, userId) {
+          async updateTask(session, taskId, newTitle, newDescription, newDueDate, newEstimatedDuration) {
             if (!taskId) {
               throw new Error('No task ID provided')
             }
 
             try {
-              await tasksApi.updateTask(taskId, newTitle, newDescription, newDueDate, newEstimatedDuration)
+              await tasksApi.updateTask(session, taskId, newTitle, newDescription, newDueDate, newEstimatedDuration)
               // Refresh tasks after update
-              if (userId) {
-                await this.fetchTasks(userId)
+              if (session) {
+                await this.fetchTasks(session)
               }
             } catch (err) {
               this.error = err.message || 'Failed to update task'
@@ -184,16 +156,16 @@ export const useTasksStore = defineStore('tasks', {
             }
           },
 
-    async deleteTask(taskId, userId) {
+    async deleteTask(session, taskId) {
       if (!taskId) {
         throw new Error('No task ID provided')
       }
 
       try {
-        await tasksApi.deleteTask(taskId)
+        await tasksApi.deleteTask(session, taskId)
         // Refresh tasks after deletion
-        if (userId) {
-          await this.fetchTasks(userId)
+        if (session) {
+          await this.fetchTasks(session)
         }
       } catch (err) {
         this.error = err.message || 'Failed to delete task'
@@ -206,9 +178,9 @@ export const useTasksStore = defineStore('tasks', {
       this.error = null
     },
 
-    async reorderTasks(userId, newOrder) {
-      if (!userId) {
-        throw new Error('No user ID available')
+    async reorderTasks(session, newOrder) {
+      if (!session) {
+        throw new Error('No session token available')
       }
 
       // Store old tasks for potential revert
@@ -227,7 +199,7 @@ export const useTasksStore = defineStore('tasks', {
       }
 
       try {
-        await tasksApi.reorderTasks(userId, newOrder)
+        await tasksApi.reorderTasks(session, newOrder)
         // Order is already updated optimistically, no need to refresh
       } catch (err) {
         // Revert on error

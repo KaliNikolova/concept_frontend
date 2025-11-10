@@ -1,53 +1,72 @@
 import { defineStore } from 'pinia'
+import { useTasksStore } from './tasks.js'
+import { usePlannerStore } from './planner.js'
+import { useScheduleStore } from './schedule.js'
 
+/**
+ * Simplified App Store
+ * 
+ * Only stores essential UI state and session token.
+ * User data (email, displayName) is fetched from backend when needed via UserAccount/_getUserProfile
+ */
 export const useAppStore = defineStore('app', {
   state: () => ({
-    userSession: null,
-    appState: 'tasks', // 'tasks', 'focus', or 'plan'
-    currentFocusTask: null
+    sessionToken: null, // Just the session token
+    appState: 'tasks' // 'tasks', 'focus', or 'plan'
   }),
 
   getters: {
-    isAuthenticated: (state) => !!state.userSession,
-    userId: (state) => state.userSession?.user || null
+    isAuthenticated: (state) => !!state.sessionToken
   },
 
   actions: {
-    setUserSession(userData) {
-      this.userSession = userData
-      // Persist to localStorage
-      if (userData) {
-        localStorage.setItem('userSession', JSON.stringify(userData))
+    /**
+     * Set session token after login
+     * @param {string} session - Session token from backend
+     */
+    setSessionToken(session) {
+      this.sessionToken = session
+      // Persist only session token to localStorage
+      if (session) {
+        localStorage.setItem('sessionToken', session)
       } else {
-        localStorage.removeItem('userSession')
+        localStorage.removeItem('sessionToken')
       }
     },
 
+    /**
+     * Set current app view state
+     */
     setAppState(state) {
       this.appState = state
     },
 
-    setCurrentFocusTask(task) {
-      this.currentFocusTask = task
-    },
-
+    /**
+     * Logout: clear session and reset state
+     */
     logout() {
-      this.userSession = null
+      // Clear all stores to prevent data leakage between users
+      const tasksStore = useTasksStore()
+      const plannerStore = usePlannerStore()
+      const scheduleStore = useScheduleStore()
+      
+      tasksStore.clearTasks()
+      plannerStore.clearScheduledTasks()
+      scheduleStore.busySlots = []
+      
+      // Clear session and state
+      this.sessionToken = null
       this.appState = 'tasks'
-      this.currentFocusTask = null
-      localStorage.removeItem('userSession')
+      localStorage.removeItem('sessionToken')
     },
 
-    // Load user session from localStorage on app start
+    /**
+     * Load session token from localStorage on app start
+     */
     loadUserSession() {
-      const saved = localStorage.getItem('userSession')
+      const saved = localStorage.getItem('sessionToken')
       if (saved) {
-        try {
-          this.userSession = JSON.parse(saved)
-        } catch (e) {
-          console.error('Failed to load user session:', e)
-          localStorage.removeItem('userSession')
-        }
+        this.sessionToken = saved
       }
     }
   }
