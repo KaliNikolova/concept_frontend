@@ -91,3 +91,35 @@ export async function findUserByEmail(session, email) {
     email
   });
 }
+
+/**
+ * Set user's working day hours
+ * @param {string} session - Session token
+ * @param {string} startTime - Start time in HH:MM format (e.g., "09:00")
+ * @param {string} endTime - End time in HH:MM format (e.g., "19:00")
+ * @returns {Promise<{status: string}>} Success status
+ */
+export async function setWorkingHours(session, startTime, endTime) {
+  console.log('userAccount.js: Setting working hours:', { startTime, endTime });
+  const response = await apiClient.post('/UserAccount/setWorkingHours', {
+    session,
+    startTime,
+    endTime
+  });
+  console.log('userAccount.js: setWorkingHours response:', response);
+  return response;
+}
+
+/**
+ * Get user's working day hours
+ * @param {string} session - Session token
+ * @returns {Promise<{workingHours: {start: string, end: string}}>} Working hours
+ */
+export async function getWorkingHours(session) {
+  console.log('userAccount.js: Getting working hours...');
+  const response = await apiClient.post('/UserAccount/_getWorkingHours', {
+    session
+  });
+  console.log('userAccount.js: getWorkingHours response:', response);
+  return response;
+}

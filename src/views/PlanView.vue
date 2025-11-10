@@ -53,7 +53,7 @@
 
               <!-- Busy Slots -->
               <div 
-                v-for="slot in busySlots" 
+                v-for="slot in todayBusySlots" 
                 :key="slot._id" 
                 class="timeline-slot busy-slot"
                 :class="{ 'hide-time': shouldHideBusySlotTime(slot) }"
@@ -80,12 +80,18 @@
                   <div class="slot-time">{{ formatSlotTime(scheduledTask.plannedStart) }} - {{ formatSlotTime(scheduledTask.plannedEnd) }}</div>
                 </div>
               </div>
+              
+              <!-- Current Time Indicator -->
+              <div class="current-time-indicator" :style="getCurrentTimeStyle()">
+                <div class="time-line"></div>
+                <div class="time-label">{{ formatCurrentTime() }}</div>
+              </div>
               </div>
             </div>
           </div>
 
           <!-- Empty State -->
-          <div v-if="!loading && busySlots.length === 0 && scheduledTasks.length === 0" class="empty-state">
+          <div v-if="!loading && todayBusySlots.length === 0 && scheduledTasks.length === 0" class="empty-state">
             <p>No schedule yet. Add blocked times or plan your day to get started!</p>
           </div>
         </div>
@@ -482,11 +488,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as scheduleApi from '@/api/schedule.js'
 import * as plannerApi from '@/api/planner.js'
 import * as tasksApi from '@/api/tasks.js'
 import * as focusApi from '@/api/focus.js'
+import * as userAccountApi from '@/api/userAccount.js'
 import { useAppStore } from '@/stores/app.js'
 import { useTasksStore } from '@/stores/tasks.js'
 import { usePlannerStore } from '@/stores/planner.js'
@@ -501,6 +508,49 @@ const scheduleStore = useScheduleStore()
 const loading = ref(false)
 const error = ref('')
 const busySlots = ref([])
+
+// Filter busy slots to only show today's blocks on the timeline
+// Truncate multi-day blocks to show only today's portion
+const todayBusySlots = computed(() => {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const todayEnd = new Date(today)
+  todayEnd.setHours(23, 59, 59, 999)
+  const tomorrowStart = new Date(today)
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1)
+  
+  return busySlots.value
+    .filter(slot => {
+      // Include slots that START today OR overlap with today
+      const slotStart = new Date(slot.startTime || slot.start)
+      const slotEnd = new Date(slot.endTime || slot.end)
+      
+      // Include if slot starts today or if it started before and extends into today
+      const startDate = new Date(slotStart)
+      startDate.setHours(0, 0, 0, 0)
+      const startsToday = startDate.getTime() === today.getTime()
+      const startedBefore = slotStart < today
+      const endsAfterTodayStarts = slotEnd > today
+      
+      return startsToday || (startedBefore && endsAfterTodayStarts)
+    })
+    .map(slot => {
+      // Truncate multi-day blocks to show only today's portion
+      const slotStart = new Date(slot.startTime || slot.start)
+      const slotEnd = new Date(slot.endTime || slot.end)
+      
+      // If block extends beyond today, truncate to end of day
+      const displayStart = slotStart < today ? today.toISOString() : slot.startTime || slot.start
+      const displayEnd = slotEnd > todayEnd ? todayEnd.toISOString() : slot.endTime || slot.end
+      
+      return {
+        ...slot,
+        startTime: displayStart,
+        endTime: displayEnd
+      }
+    })
+})
+
 // Make scheduledTasks reactive to planner store
 const scheduledTasks = computed(() => {
   return plannerStore.todayScheduledTasks.map(scheduledTask => ({
@@ -558,31 +608,42 @@ const hours = ref(Array.from({ length: 24 }, (_, i) => i))
 // Reference to timeline element for scrolling
 const timelineRef = ref(null)
 
+// Current time for "now" indicator (updates every minute)
+const currentTime = ref(new Date())
+
   // Working day settings (start and end time)
   const workingDayStart = ref('09:00') // Default 9 AM
-  const workingDayEnd = ref('17:00') // Default 5 PM
+  const workingDayEnd = ref('19:00') // Default 7 PM (backend defaults to 19:00)
   const workingDayStartMenuOpen = ref(false)
   const workingDayEndMenuOpen = ref(false)
 
-// Load working day settings from localStorage
-const loadWorkingDaySettings = () => {
+// Load working day settings from backend
+const loadWorkingDaySettings = async () => {
   if (!appStore.sessionToken) return
   
-  const key = `workingDay_${appStore.sessionToken}`
-  const saved = localStorage.getItem(key)
-  if (saved) {
-    try {
-      const settings = JSON.parse(saved)
-      workingDayStart.value = settings.start || '09:00'
-      workingDayEnd.value = settings.end || '17:00'
-    } catch (e) {
-      console.error('Failed to load working day settings:', e)
+  try {
+    console.log('Loading working hours from backend...')
+    const response = await userAccountApi.getWorkingHours(appStore.sessionToken)
+    console.log('Raw response from getWorkingHours:', response)
+    
+    if (response && response.workingHours) {
+      workingDayStart.value = response.workingHours.start || '09:00'
+      workingDayEnd.value = response.workingHours.end || '19:00'
+      console.log('✓ Loaded working hours from backend:', response.workingHours)
+    } else {
+      console.warn('No workingHours in response, using defaults')
+      workingDayStart.value = '09:00'
+      workingDayEnd.value = '19:00'
     }
+  } catch (e) {
+    console.error('Failed to load working hours from backend:', e)
+    // Fallback to defaults
+    workingDayStart.value = '09:00'
+    workingDayEnd.value = '19:00'
   }
 }
 
-// Save working day settings to localStorage
-  // Track previous minute values for working day times
+// Track previous minute values for working day times
   const prevWorkingDayStartMinutes = ref(null)
   const prevWorkingDayEndMinutes = ref(null)
 
@@ -694,10 +755,8 @@ const loadWorkingDaySettings = () => {
     saveWorkingDaySettings()
   }
 
-  const saveWorkingDaySettings = () => {
+  const saveWorkingDaySettings = async () => {
     if (!appStore.sessionToken) return
-
-    const key = `workingDay_${appStore.sessionToken}`
     
     // Convert Date objects to HH:MM string format for storage
     let startValue = workingDayStart.value
@@ -714,12 +773,14 @@ const loadWorkingDaySettings = () => {
       endValue = `${hours}:${minutes}`
     }
     
-    const settings = {
-      start: startValue,
-      end: endValue
+    console.log('Saving working hours to backend:', { start: startValue, end: endValue })
+    
+    try {
+      const response = await userAccountApi.setWorkingHours(appStore.sessionToken, startValue, endValue)
+      console.log('✓ Saved working hours to backend. Response:', response)
+    } catch (e) {
+      console.error('Failed to save working hours to backend:', e)
     }
-    localStorage.setItem(key, JSON.stringify(settings))
-    console.log('Saved working day settings:', settings)
   }
 
 // Get working day blocked slots (before start time and after end time)
@@ -737,21 +798,22 @@ const getWorkingDayBlockedSlots = (planningDate) => {
     planningDate: planningDate.toISOString()
   })
   
-  // Parse start and end times
+  // Parse start and end times (these are in LOCAL time, e.g. "09:00" means 9 AM in user's timezone)
   const [startHour, startMinute] = workingDayStart.value.split(':').map(Number)
   const [endHour, endMinute] = workingDayEnd.value.split(':').map(Number)
   
-  // Create date objects for the planning day
+  // Create dates in LOCAL time, then convert to UTC for API
+  // This ensures "9:00 AM" means 9 AM in user's timezone, not 9 AM UTC
   const dayStart = new Date(planningDate)
   dayStart.setHours(0, 0, 0, 0)
   
-  const workingStart = new Date(dayStart)
-  workingStart.setHours(startHour, startMinute, 0)
+  const workingStart = new Date(planningDate)
+  workingStart.setHours(startHour, startMinute, 0, 0)
   
-  const workingEnd = new Date(dayStart)
-  workingEnd.setHours(endHour, endMinute, 0)
+  const workingEnd = new Date(planningDate)
+  workingEnd.setHours(endHour, endMinute, 0, 0)
   
-  const dayEnd = new Date(dayStart)
+  const dayEnd = new Date(planningDate)
   dayEnd.setHours(23, 59, 59, 999)
   
   // Block time before working day starts (midnight to start time)
@@ -840,9 +902,53 @@ const loadBusySlots = async () => {
     // Fetch busy slots from Schedule concept via schedule store
     await scheduleStore.fetchSlots(appStore.sessionToken)
     busySlots.value = scheduleStore.busySlots
+    
+    // Debug: Log slot dates
+    console.log('Loaded busy slots with dates:')
+    busySlots.value.forEach(slot => {
+      const slotDate = new Date(slot.startTime || slot.start)
+      console.log(`  - ${slot.description}: ${slotDate.toLocaleString()} (${slotDate.toDateString()})`)
+    })
   } catch (err) {
     error.value = err.message || 'Failed to load busy slots'
     busySlots.value = []
+  }
+}
+
+// Clean up old blocked times (from previous days)
+const cleanupOldBlocks = async () => {
+  if (!appStore.sessionToken) return
+  
+  try {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    const oldSlots = busySlots.value.filter(slot => {
+      const slotDate = new Date(slot.startTime || slot.start)
+      slotDate.setHours(0, 0, 0, 0)
+      return slotDate.getTime() < today.getTime() // Before today
+    })
+    
+    if (oldSlots.length > 0) {
+      console.log(`🧹 Cleaning up ${oldSlots.length} old blocked time(s) from previous days...`)
+      
+      for (const slot of oldSlots) {
+        try {
+          await scheduleApi.deleteSlot(appStore.sessionToken, slot._id)
+          console.log(`  ✓ Deleted: ${slot.description} from ${new Date(slot.startTime).toDateString()}`)
+        } catch (err) {
+          console.warn(`  ✗ Failed to delete slot ${slot._id}:`, err.message)
+        }
+      }
+      
+      // Refresh busy slots after cleanup
+      await loadBusySlots()
+      console.log('✓ Cleanup complete')
+    } else {
+      console.log('No old blocked times to clean up')
+    }
+  } catch (err) {
+    console.error('Failed to cleanup old blocks:', err)
   }
 }
 
@@ -854,7 +960,7 @@ const loadScheduledTasks = async () => {
     // Just sync tasks with scheduled times
     console.log('All scheduled tasks in store:', plannerStore.scheduledTasks)
     console.log('Filtered scheduled tasks (todayScheduledTasks):', plannerStore.todayScheduledTasks)
-    
+    console.log('All busy slots:', busySlots.value.length, '| Today\'s busy slots:', todayBusySlots.value.length)
     console.log('Loaded scheduled tasks (computed):', scheduledTasks.value)
   } catch (err) {
     console.error('Failed to load scheduled tasks:', err)
@@ -878,6 +984,33 @@ const formatSlotTime = (dateTime) => {
   const date = new Date(dateTime)
   const hours = date.getHours()
   const minutes = date.getMinutes()
+  const ampm = hours >= 12 ? 'PM' : 'AM'
+  const hour12 = hours % 12 || 12
+  return `${hour12}:${String(minutes).padStart(2, '0')} ${ampm}`
+}
+
+// Get current time indicator position on timeline
+const getCurrentTimeStyle = () => {
+  const now = currentTime.value
+  const hours = now.getHours()
+  const minutes = now.getMinutes()
+  const totalMinutes = hours * 60 + minutes
+  const topPosition = (totalMinutes / 60) * 40 // 40px per hour
+  
+  return {
+    top: `${topPosition}px`,
+    position: 'absolute',
+    left: '0',
+    right: '0',
+    zIndex: '15'
+  }
+}
+
+// Format current time for display
+const formatCurrentTime = () => {
+  const now = currentTime.value
+  const hours = now.getHours()
+  const minutes = now.getMinutes()
   const ampm = hours >= 12 ? 'PM' : 'AM'
   const hour12 = hours % 12 || 12
   return `${hour12}:${String(minutes).padStart(2, '0')} ${ampm}`
@@ -1819,7 +1952,7 @@ const handlePlanDay = async () => {
       return
     }
     
-    // Format busy slots from schedule store - include all busy slots (both manual and external)
+    // Format busy slots from schedule store
     let formattedBusySlots = busySlots.value.map(slot => ({
       start: slot.startTime || slot.start,
       end: slot.endTime || slot.end
@@ -1830,39 +1963,19 @@ const handlePlanDay = async () => {
       return !isNaN(start.getTime()) && !isNaN(end.getTime()) && end > start
     })
     
-    // Add working day blocked slots (before start time and after end time)
-    // Determine planning date: use earliest busy slot date, or today
+    // Use today's date for planning (start of day in local timezone)
     let planningDate = new Date()
-    if (formattedBusySlots.length > 0) {
-      const earliestSlot = formattedBusySlots.reduce((earliest, slot) => {
-        const slotDate = new Date(slot.start)
-        return slotDate < new Date(earliest.start) ? slot : earliest
-      }, formattedBusySlots[0])
-      planningDate = new Date(earliestSlot.start)
-      planningDate.setHours(0, 0, 0, 0)
-    } else {
-      planningDate.setHours(0, 0, 0, 0)
-    }
+    planningDate.setHours(0, 0, 0, 0)
     
+    // Add working day blocked slots for today only
+    // (Backend now plans only for today, not tomorrow)
     const workingDayBlockedSlots = getWorkingDayBlockedSlots(planningDate)
     formattedBusySlots = [...formattedBusySlots, ...workingDayBlockedSlots]
     console.log('Working day settings:', {
       start: workingDayStart.value,
       end: workingDayEnd.value
     })
-    console.log('Including', workingDayBlockedSlots.length, 'working day blocked slots:', workingDayBlockedSlots)
-    
-    // Also include already-scheduled tasks from Planner as busy slots
-    // This ensures we don't double-schedule tasks that are already scheduled
-    const existingScheduled = plannerStore.todayScheduledTasks
-    if (existingScheduled && existingScheduled.length > 0) {
-      const scheduledAsBusy = existingScheduled.map(scheduled => ({
-        start: scheduled.plannedStart,
-        end: scheduled.plannedEnd
-      }))
-      formattedBusySlots = [...formattedBusySlots, ...scheduledAsBusy]
-      console.log('Including', existingScheduled.length, 'already-scheduled tasks as busy slots')
-    }
+    console.log('Including', workingDayBlockedSlots.length, 'working day blocked slots for today:', workingDayBlockedSlots)
     
     console.log('Planning day with:', {
       userId: appStore.sessionToken,
@@ -1871,7 +1984,8 @@ const handlePlanDay = async () => {
       planningDate: planningDate.toISOString()
     })
     console.log('Tasks detail:', JSON.stringify(formattedTasks, null, 2))
-    console.log('BusySlots detail (from Schedule + existing scheduled):', JSON.stringify(formattedBusySlots, null, 2))
+    console.log('BusySlots detail (from Schedule + working day blocks):', JSON.stringify(formattedBusySlots, null, 2))
+    console.log('🔍 Sleep block check:', formattedBusySlots.find(s => s.end === '2025-11-10T08:00:00.000Z'))
     
     // Use planner store to plan day (it will refresh scheduled tasks)
     const response = await plannerStore.planDay(
@@ -2061,8 +2175,7 @@ const handleReplan = async () => {
       duration: task.estimatedDuration || 60 // Duration in minutes (backend expects minutes)
     }))
     
-    // Format busy slots from Schedule database - include all busy slots (both manual and external)
-    // These come from Schedule/_getSlots which returns all BusySlots
+    // Format busy slots from Schedule database
     let formattedBusySlots = busySlots.value.map(slot => ({
       start: slot.startTime || slot.start,
       end: slot.endTime || slot.end
@@ -2073,29 +2186,19 @@ const handleReplan = async () => {
       return !isNaN(start.getTime()) && !isNaN(end.getTime()) && end > start
     })
     
-          // Add working day blocked slots (before start time and after end time)
-      // Determine planning date: use earliest busy slot date, or today
-      let planningDate = new Date()
-      if (formattedBusySlots.length > 0) {
-        const earliestSlot = formattedBusySlots.reduce((earliest, slot) => {
-          const slotDate = new Date(slot.start)
-          return slotDate < new Date(earliest.start) ? slot : earliest
-        }, formattedBusySlots[0])
-        planningDate = new Date(earliestSlot.start)
-        planningDate.setHours(0, 0, 0, 0)
-      } else {
-        planningDate.setHours(0, 0, 0, 0)
-      }
+    // Use today's date for planning (start of day in local timezone)
+    let planningDate = new Date()
+    planningDate.setHours(0, 0, 0, 0)
 
-      // Include working day blocked slots so backend can avoid scheduling during sleeping hours
-      // TODO: Backend should eventually query working day settings and generate these itself
+      // Add working day blocked slots for today only
+      // (Backend now plans only for today, not tomorrow)
       const workingDayBlockedSlots = getWorkingDayBlockedSlots(planningDate)
       formattedBusySlots = [...formattedBusySlots, ...workingDayBlockedSlots]
       console.log('Working day settings:', {
         start: workingDayStart.value,
         end: workingDayEnd.value
       })
-      console.log('Including', workingDayBlockedSlots.length, 'working day blocked slots:', workingDayBlockedSlots)
+      console.log('Including', workingDayBlockedSlots.length, 'working day blocked slots for today:', workingDayBlockedSlots)
 
       // Replan: Clear all scheduled tasks, then plan day fresh (same as Plan Day)
     // Use planner store to replan (it will clear day then plan)
@@ -2291,12 +2394,38 @@ watch(loading, (newLoading) => {
 })
 
 // Load on mount
-onMounted(() => {
+onMounted(async () => {
   if (appStore.sessionToken) {
-    loadWorkingDaySettings()
-    loadBusySlots()
+    await loadWorkingDaySettings() // Load from backend
+    await loadBusySlots()
+    await cleanupOldBlocks() // Auto-delete old blocked times from previous days
     loadScheduledTasks()
   }
+  
+  // Update current time every minute for "now" indicator
+  // Sync updates to happen exactly at the start of each minute (:00 seconds)
+  const updateCurrentTime = () => {
+    currentTime.value = new Date()
+  }
+  
+  // Calculate milliseconds until next minute boundary
+  const now = new Date()
+  const secondsUntilNextMinute = 60 - now.getSeconds()
+  const msUntilNextMinute = secondsUntilNextMinute * 1000 - now.getMilliseconds()
+  
+  let timeInterval
+  
+  // Wait until the next minute, then update every 60 seconds
+  const initialTimeout = setTimeout(() => {
+    updateCurrentTime() // Update at the minute boundary
+    timeInterval = setInterval(updateCurrentTime, 60000) // Then every minute
+  }, msUntilNextMinute)
+  
+  // Clean up interval when component unmounts
+  onUnmounted(() => {
+    clearTimeout(initialTimeout)
+    if (timeInterval) clearInterval(timeInterval)
+  })
   
   // Also try to scroll immediately in case timeline is already rendered
   nextTick(() => {
@@ -2917,6 +3046,7 @@ onMounted(() => {
   color: var(--gray-btn-color, #757575);
   opacity: var(--gray-btn-opacity, 0.7);
   cursor: default;
+  z-index: 10; /* Above sleeping blocks */
   user-select: none;
   -webkit-user-select: none;
   -moz-user-select: none;
@@ -2932,6 +3062,12 @@ onMounted(() => {
   cursor: default;
   pointer-events: none;
   border-left: none;
+  z-index: 5 !important; /* Lower z-index so sleeping blocks appear behind other blocks */
+  width: 100% !important; /* Full width to appear as background */
+  left: 0 !important; /* Align to left edge */
+  right: 0 !important; /* Extend to right edge */
+  opacity: 0.4 !important; /* More transparent for subtle background effect */
+  margin-bottom: 2px; /* Match other blocks */
 }
 
 .sleeping-block .slot-content {
@@ -2945,6 +3081,7 @@ onMounted(() => {
   border-bottom: 1px solid rgba(102, 126, 234, 0.2);
   border-right: 1px solid rgba(102, 126, 234, 0.15);
   color: #667eea;
+  z-index: 10; /* Above sleeping blocks */
 }
 
 .task-slot.task-completed {
@@ -2954,6 +3091,35 @@ onMounted(() => {
   border-bottom: 1px solid rgba(72, 187, 120, 0.2);
   border-right: 1px solid rgba(72, 187, 120, 0.15);
   color: #48bb78;
+}
+
+/* Current Time Indicator */
+.current-time-indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.time-line {
+  width: 100%;
+  height: 2px;
+  background: #757575;
+  position: relative;
+}
+
+.time-label {
+  position: absolute;
+  left: 8px;
+  top: -10px;
+  background: #757575;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .slot-content {

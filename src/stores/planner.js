@@ -19,11 +19,22 @@ export const usePlannerStore = defineStore('planner', {
     // Show all tasks without date filtering since we want to see the plan
     todayScheduledTasks: (state) => {
       console.log('Computing todayScheduledTasks, total tasks:', state.scheduledTasks.length)
+      
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const todayTime = today.getTime()
+      
       const result = [...state.scheduledTasks]
+        .filter(task => {
+          // Only include tasks scheduled for today
+          const taskDate = new Date(task.plannedStart)
+          taskDate.setHours(0, 0, 0, 0)
+          return taskDate.getTime() === todayTime
+        })
         .sort((a, b) => {
           return new Date(a.plannedStart) - new Date(b.plannedStart)
         })
-      console.log('Returning', result.length, 'sorted tasks')
+      console.log('Returning', result.length, 'tasks for today (filtered from', state.scheduledTasks.length, 'total)')
       return result
     }
   },
