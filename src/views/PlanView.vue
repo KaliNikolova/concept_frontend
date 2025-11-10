@@ -89,11 +89,6 @@
               </div>
             </div>
           </div>
-
-          <!-- Empty State -->
-          <div v-if="!loading && todayBusySlots.length === 0 && scheduledTasks.length === 0" class="empty-state">
-            <p>No schedule yet. Add blocked times or plan your day to get started!</p>
-          </div>
         </div>
 
                             <!-- Action Buttons (Right) -->
